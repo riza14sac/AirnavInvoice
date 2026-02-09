@@ -1,0 +1,176 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  OPERATOR
+  VIEWER
+}
+
+enum FlightType {
+  DOM
+  INT
+}
+
+enum PaymentStatus {
+  UNPAID      // Belum Bayar
+  PAID        // Lunas
+  UNDERPAID   // Kurang Bayar
+  OVERPAID    // Lebih Bayar
+}
+
+enum MonitoringStatus {
+  PENDING     // Menunggu
+  BILLED      // Ditagih
+  DEPOSIT     // Deposit
+  COMPLETED   // Selesai
+}
+
+enum AdvanceExtend {
+  ADVANCE
+  EXTEND
+}
+
+enum Currency {
+  IDR
+  USD
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      Role     @default(OPERATOR)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+model FlightService {
+  id String @id @default(cuid())
+
+  // Sequence number for display (auto-generated)
+  seqNo Int @unique @default(autoincrement())
+
+  // Input Data (Blue Columns)
+  airline       String // Airline/Operator/Ground Handling
+  flightType    FlightType
+  flightNumber  String
+  flightNumber2 String? // Optional second flight number
+  registration  String
+  aircraftType  String
+  depStation    String
+  arrStation    String
+
+  // Date and Time (stored as UTC)
+  arrivalDate DateTime // Date portion
+  ataUtc      DateTime? // Actual Time of Arrival (UTC) - optional for Departure-only services
+  atdUtc      DateTime? // Actual Time of Departure (UTC) - optional for Arrival-only services
+
+  // Advance/Extend type
+  advanceExtend AdvanceExtend
+
+  // Service Data (Shared Start/End for all units)
+  serviceStartUtc DateTime
+  serviceEndUtc   DateTime
+
+  // Units Used (at least one must be true)
+  useApp  Boolean @default(false)
+  useTwr  Boolean @default(false)
+  useAfis Boolean @default(false)
+
+  // Currency for billing
+  currency     Currency @default(IDR)
+  exchangeRate Int?     // Exchange rate at time of creation (e.g., 16000 for 1 USD = 16,000 IDR)
+
+  // Responsible person
+  picDinas String?
+
+  // Calculated Data (Green Columns)
+  durationMinutes Int
+  billableHours   Int
+  grossApp        BigInt @default(0) // Gross for APP unit
+  grossTwr        BigInt @default(0) // Gross for TWR unit
+  grossAfis       BigInt @default(0) // Gross for AFIS unit
+  grossTotal      BigInt // Sum of all selected units
+  ppn             BigInt // 12% of grossTotal
+  netTotal        BigInt // grossTotal + ppn
+
+  // Receipt Info
+  receiptNo   String        @unique // WITT.21.2025.12.0001
+  receiptDate DateTime      @default(now())
+  status      PaymentStatus @default(UNPAID)
+  paidAt      DateTime?
+
+  // Enhanced Payment Tracking
+  amountPaid        BigInt?          // Jumlah yang dibayar
+  paymentDifference BigInt?          // Selisih (+ lebih bayar, - kurang bayar)
+  paymentDays       Int?             // Lama pembayaran dalam hari
+
+  // Monitoring Status
+  monitoringStatus  MonitoringStatus @default(PENDING)
+
+  // PPH 23 Withholding (dipotong oleh airline/operator/GH)
+  pph23Withheld     Boolean          @default(false)
+
+  // Faktur Pajak (diisi setelah service dibuat)
+  fakturPajakNo     String?
+  fakturPajakDate   DateTime?
+
+  // PDF paths
+  pdfReceiptPath   String?
+  pdfBreakdownPath String?
+  pdfCombinedPath  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([flightType])
+  @@index([status])
+  @@index([arrivalDate])
+  @@index([receiptNo])
+  @@index([monitoringStatus])
+  @@map("flight_services")
+}
+
+model ReceiptCounter {
+  id      String @id @default(cuid())
+  year    Int
+  month   Int
+  code    String // "21" for DOM, "22" for INT
+  lastSeq Int    @default(0)
+
+  @@unique([year, month, code])
+  @@map("receipt_counters")
+}
+
+// Signature types for PDF
+enum SignatureType {
+  PIC_DINAS
+  KEPALA_BANDARA
+}
+
+model Signature {
+  id        String        @id @default(cuid())
+  name      String        // Nama penandatangan
+  title     String?       // Jabatan
+  type      SignatureType
+  imageData String        @db.Text // Base64 encoded PNG
+  isActive  Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@map("signatures")
+}

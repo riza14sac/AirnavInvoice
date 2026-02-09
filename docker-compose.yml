@@ -1,0 +1,50 @@
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:16-alpine
+    container_name: airnav-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: airnav
+      POSTGRES_PASSWORD: airnav123
+      POSTGRES_DB: airnav_invoice
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    networks:
+      - airnav-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airnav -d airnav_invoice"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Next.js Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: airnav-app
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://airnav:airnav123@db:5432/airnav_invoice
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: your-secret-key-here-change-in-production
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - airnav-network
+    volumes:
+      - ./storage:/app/storage
+      - ./templates:/app/templates
+
+volumes:
+  postgres_data:
+
+networks:
+  airnav-network:
+    driver: bridge
