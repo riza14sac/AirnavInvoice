@@ -127,7 +127,7 @@ model FlightService {
   pph23Withheld     Boolean          @default(false)
 
   // Faktur Pajak (diisi setelah service dibuat)
-  faturPajakNo      String?
+  fakturPajakNo      String?
   fakturPajakDate   DateTime?
 
   // PDF paths
