@@ -6,14 +6,12 @@ import {
     generateReceiptPdf,
     generateBreakdownPdf,
     generateCombinedPdf,
-    savePdf,
 } from "@/lib/pdf/generatePdf";
 
 interface Params {
     params: Promise<{ id: string }>;
 }
 
-// POST /api/services/[id]/generate-pdf - Generate all PDFs for a service
 export async function POST(request: NextRequest, { params }: Params) {
     try {
         const session = await auth();
@@ -35,36 +33,35 @@ export async function POST(request: NextRequest, { params }: Params) {
             return NextResponse.json({ error: "Service not found" }, { status: 404 });
         }
 
-        // Generate all three PDFs
-        const [receiptBuffer, breakdownBuffer, combinedBuffer] = await Promise.all([
+        // 1. Generate PDF di memori saja (Tanpa savePdf karena Vercel Read-Only)
+        // Fungsi generate ini sekarang menggunakan Puppeteer + Chromium-min yang kita pasang tadi
+        await Promise.all([
             generateReceiptPdf(service),
             generateBreakdownPdf(service),
             generateCombinedPdf(service),
         ]);
 
-        // Save to storage
-        const [receiptPath, breakdownPath, combinedPath] = await Promise.all([
-            savePdf(receiptBuffer, "receipt", service.receiptNo),
-            savePdf(breakdownBuffer, "breakdown", service.receiptNo),
-            savePdf(combinedBuffer, "combined", service.receiptNo),
-        ]);
+        // 2. Gunakan Nama File sebagai path (Bukan path folder storage)
+        const receiptName = `receipt_${service.receiptNo.replace(/\./g, "_")}.pdf`;
+        const breakdownName = `breakdown_${service.receiptNo.replace(/\./g, "_")}.pdf`;
+        const combinedName = `combined_${service.receiptNo.replace(/\./g, "_")}.pdf`;
 
-        // Update service with PDF paths
+        // 3. Update database dengan nama file tersebut
         await prisma.flightService.update({
             where: { id },
             data: {
-                pdfReceiptPath: receiptPath,
-                pdfBreakdownPath: breakdownPath,
-                pdfCombinedPath: combinedPath,
+                pdfReceiptPath: receiptName,
+                pdfBreakdownPath: breakdownName,
+                pdfCombinedPath: combinedName,
             },
         });
 
         return NextResponse.json({
             success: true,
             paths: {
-                receipt: receiptPath,
-                breakdown: breakdownPath,
-                combined: combinedPath,
+                receipt: receiptName,
+                breakdown: breakdownName,
+                combined: combinedName,
             },
         });
     } catch (error) {
